@@ -1,0 +1,6 @@
+[submodule "ADEKF"]
+	path = ADEKF
+	url = git@github.com:TomLKoller/ADEKF.git
+[submodule "ADEKF_VIZ"]
+	path = ADEKF_VIZ
+	url = git@github.com:TomLKoller/ADEKF_VIZ.git
