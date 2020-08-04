@@ -12,7 +12,7 @@
 
 class PathCreator {
 public:
-    std::vector<Eigen::Vector3d> path;
+    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> path;
     std::vector<adekf::SO3d> orientations;
 
 

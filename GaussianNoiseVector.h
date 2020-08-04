@@ -52,6 +52,10 @@
             return *this;
         }
 
+        /**
+         * Get the covariance matrix of this vector.
+         * @return  The diagonal covariance matrix corresponding to the noise _sigmas.
+         */
         Eigen::Matrix<double,size,size> getCov(){
             Eigen::Matrix<double,size,1> diag;
             for(size_t t=0; t < size;t++){
