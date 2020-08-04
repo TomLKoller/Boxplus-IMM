@@ -172,14 +172,14 @@ int main(int argc, char *argv[]) {
 
 
     //Comment in to visualize paths
-
+    /*
     adekf::viz::initGuis(argc, argv);
     adekf::viz::PoseRenderer::displayPath(path.path, "red");
     adekf::viz::PoseRenderer::displayPath(estimated_poses, "black");
     adekf::viz::PoseRenderer::displayPath(imm_estimated_poses, "green");
     adekf::viz::PoseRenderer::displayPath(bad_imm_estimated_poses, "blue");
     adekf::viz::PoseRenderer::displayPoints({radar1.position, radar2.position, radar3.position, radar4.position}, "red", 5);
-    adekf::viz::runGuis();
+    adekf::viz::runGuis();*/
 
     return 0;
 }

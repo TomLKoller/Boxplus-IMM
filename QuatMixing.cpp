@@ -257,6 +257,6 @@ void plot_real_gold_vs_(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
     //Choose one to plot
     //plot_bad_vs_bp(argc, argv);
-    plot_real_gold_vs_(argc,argv);//takes really long ~
+    plot_real_gold_vs_(argc,argv);//takes really long ~10 min
     return 0;
 }
