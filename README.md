@@ -56,7 +56,7 @@ You can pass an unlimited (including 0) amount  of manifolds or vectors.
 Be careful that manifolds are declared by ((type,name)) with double parenthesis and no comma between two manifolds
 whereas vectors are declared as (size,name) with single parenthesis and commas between the vectors.
 
-###M odels
+### Models
 Models can be declared either as lambdas or as structs with an operator().
 #### Lambda Declaration:
 You can create models as lambdas e.g.:
