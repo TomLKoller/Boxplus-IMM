@@ -2,7 +2,8 @@
 This repository contains the boxplus-IMM (BP-IMM). A generic interacting multiple model filter which can handle manifold structures  (e.g. quaternions) in the state space. 
 It can be used in vector only mode aswell.  This Readme is not intended to explain the BP-IMM. Please refer to the publication:
 "The Interacting Multiple Model Filter on Boxplus-Manifolds" -Tom Koller and Udo Frese; Septembre 2020.
-##Installation 
+
+## Installation 
 ### Requirements
 Download and install the requirements of ADEKF and ADEKF_VIZ:
 1. GCC >= 7  (or other c++17 compiler)        
@@ -32,16 +33,16 @@ make -j4
 ```
 
 
-##Run the example code
+## Run the example code
 ```
 ./RadarFlightExample
 ```
 
 
-##Usage of the BP-IMM
+## Usage of the BP-IMM
 The BP-IMM is build upon the ADEKF. Hence, it can be helpful to read https://github.com/TomLKoller/ADEKF. The website gives a more detailed explanation of the State representation and how to define models.
 For an example look into immBodyDistance.cpp
-###State representation
+### State representation
 The state can be composed of manifolds and vectors. Currently a quaternion representation of SO3 and a matrix representation of SO2 are available as manifolds.
 You can declare a compound state with the macro: 
 
@@ -55,9 +56,9 @@ You can pass an unlimited amount of manifolds or vectors.
 Be careful that manifolds are declared by ((type,name)) with double parenthesis and no comma between two manifolds
 whereas vectors are declared as (size,name) with single parenthesis and commas between the vectors.
 
-###Models
+###M odels
 Models can be declared either as lambdas or as structs with an operator().
-####Lambda Declaration:
+#### Lambda Declaration:
 You can create models as lambdas e.g.:
 ```
 auto dyn_model=[](auto & state, auto velocity, double time_step){
@@ -88,7 +89,7 @@ return function_of(state,inputs...);
 The return value is deduced automatically and has to be either an Eigen::Matrix or a Manifold.
 Please read the pittfalls with lambdas page at  https://github.com/TomLKoller/ADEKF
 
-####Struct Declaration
+#### Struct Declaration
 If you want to use structs instead of lambdas you have to declare them as:
 ```
 struct dynamic_model{
@@ -111,7 +112,7 @@ struct measurement_model{
 
 The state needs to be templated with the scalar type T to use the automatic differentiation framework.
 
-###Setup of the BP-IMM
+### Setup of the BP-IMM
 When initialising the BP-IMM you have to pass start state, covariance, the dynamic models and the dynamic covariances. 
 You can pass an arbitrary amount of dynamic models with corresponding covariances. 
 Important: The dynamic covariances need to have the same size.
@@ -140,7 +141,7 @@ Now set the transition and start probabilities of the mode by e.g.:
 ```
 
 
-###Running the Filter steps
+### Running the Filter steps
 To run the BP-IMM call the interaction, prediction, update and combination step:
 ```
  imm.interaction();
@@ -159,7 +160,7 @@ std::cout << imm.sigma << std::endl;
 ```
 
 
-##Support
+## Support
 On request, i can provide minimal examples. 
 
 Please create an Issue  if this short Readme is insufficient to set up the BP-IMM. 
