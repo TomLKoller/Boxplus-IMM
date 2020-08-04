@@ -49,10 +49,10 @@ You can declare a compound state with the macro:
 ```
 ADEKF_MANIFOLD(TYPE_NAME,((MAN_TYPE_1,man_name_1))((MAN_TYPE_2,man_name_2))...,(VECTOR_SIZE_1,vector_name_1),(VECTOR_SIZE_2,vector_name_2),...)
 e.g.
-ADEKF_MANIFOLD(Pose3D,((adekf::SO3,orientation)))),(3,position),(3,velocity),(3,acc_bias))
+ADEKF_MANIFOLD(Pose3D,((adekf::SO3,orientation)),(3,position),(3,velocity),(3,acc_bias))
 ```
 This macro will create a type TYPE_NAME with attributes man_name_1, man_name_2,... which refer to the given manifold types and with vectors called vector_name1, ... with the given sizes.
-You can pass an unlimited amount of manifolds or vectors.
+You can pass an unlimited (including 0) amount  of manifolds or vectors.
 Be careful that manifolds are declared by ((type,name)) with double parenthesis and no comma between two manifolds
 whereas vectors are declared as (size,name) with single parenthesis and commas between the vectors.
 
