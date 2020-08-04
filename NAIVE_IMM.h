@@ -6,8 +6,8 @@
 #define CYLINDEREXAMPLE_BADIMM_H
 
 
-#include "../../include/ADEKF/ADEKF.h"
-#include "../../include/ADEKF/ADEKFUtils.h"
+#include "ADEKF.h"
+#include "ADEKFUtils.h"
 #include <list>
 #include <any>
 #include <tuple>
@@ -18,10 +18,7 @@ namespace adekf {
 
 
     /**
-     * Todo doku
-     * Todo manifold states ((manifold + manifold)*p ?)
-     * @tparam State
-     * @tparam Models
+     * For detailed documentation look into the BP-IMM as this is basically a copy of it except for the mixing functions
      */
     template<typename DYNAMIC_NOISE_TYPE, typename ...Models>
     class NAIVE_IMM {
@@ -92,13 +89,13 @@ namespace adekf {
         }
 
 
-        void addModel(int index) {
+        void addFilter(int index) {
             filter_bank.push_back(std::make_pair(Filter<State>(mu, sigma), index));
         }
 
-        void addModels(std::initializer_list<int> indices) {
+        void addFilters(std::initializer_list<int> indices) {
             for (int index: indices) {
-                addModel(index);
+                addFilter(index);
             }
         }
 
@@ -112,6 +109,7 @@ namespace adekf {
             assert(abs(probabilities.sum() - 1) < 0.001 && "Probabilities must sum up to 1");
 
 
+
             Eigen::Matrix<double, 13, 1> sum = sum.Zero();
             for (size_t i = 0; i < numFilters(); i++) {
                 if (probabilities(i) < 0.)
@@ -119,7 +117,9 @@ namespace adekf {
                 else if (probabilities(i) > 0.) {
                     Eigen::Matrix<double, 13, 1> temp;
                     State state = filter_bank[i].first.mu;
+                    //read parameter space of state
                     temp << state.rotate_world_to_body.coeffs(), state.w_position, state.w_velocity, state.w_angular_rate;
+                    //sum up in parameter space
                     sum += temp * probabilities(i);
                 }
             }
@@ -127,7 +127,7 @@ namespace adekf {
         }
 
         Covariance weightedCovarianceSum(const Eigen::Matrix<double, -1, 1> &probabilities, const State &target) {
-
+            //ignore that it might be a manifold and perform the classic covariance update
             Covariance sum = Covariance::Zero(DOF, DOF);
             for (size_t i = 0; i < numFilters(); i++) {
                 if (probabilities(i) > 0.) {

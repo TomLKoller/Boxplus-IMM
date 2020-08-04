@@ -10,9 +10,10 @@
 
 #define GRAVITY_CONSTANT 9.81
 
-
+//Declaration of State
 ADEKF_MANIFOLD(CT_State, ((adekf::SO3, rotate_world_to_body)), (3, w_position), (3, w_velocity), (3, w_angular_rate))
 
+//Declaration of measurement
 ADEKF_MANIFOLD(Radar4, , (3, radar1), (3, radar2), (3, radar3), (3, radar4))
 
 
@@ -57,7 +58,7 @@ struct constant_turn_model {
         state.w_position += B * state.w_velocity + state.w_velocity * deltaT;
         state.w_velocity += A * state.w_velocity;
         state.rotate_world_to_body = state.rotate_world_to_body * adekf::SO3(state.w_angular_rate * deltaT).conjugate();
-        state.w_angular_rate += NOISE(9, 3) * deltaT;
+        state.w_angular_rate += noise * deltaT;
 
     };
     //Create static object
@@ -75,29 +76,17 @@ int main(int argc, char *argv[]) {
 
 
 
-
-    Eigen::Matrix<double, 12, 12> ct_sigma = ct_sigma.Zero();
     //Setup covariance of constant turn model
-    ct_sigma(0, 0) = ct_sigma(1, 1) = ct_sigma(2, 2) = 0.0;
-    ct_sigma(3, 3) = ct_sigma(4, 4) = ct_sigma(5, 5) = 0;
-    ct_sigma(6, 6) = ct_sigma(7, 7) = ct_sigma(8, 8) = 0.;
-    ct_sigma(9, 9) = ct_sigma(10, 10) = ct_sigma(11, 11) = 0.1;
+    Eigen::Matrix<double, 3, 3> ct_sigma = ct_sigma.Identity()*0.1;
 
     //straight model
     auto straight_model = [](auto &state, auto noise, double deltaT) {
-        state.w_velocity += NOISE(6, 3) * deltaT;
-        //state.rotate_body_to_world=state.rotate_body_to_world*adekf::SO3(state.b_angular_rate*deltaT);
+        state.w_velocity +=noise * deltaT;
         state.w_position += state.w_velocity * deltaT;
-        //state.rotate_world_to_body=state.rotate_world_to_body*adekf::SO3(state.w_angular_rate*deltaT).conjugate();
-        //state.w_angular_rate+=NOISE(9,3)*deltaT;
-
+        //orientation and angular rate stay constant
     };
     //Setup covariance of straight model
-    Eigen::Matrix<double, 12, 12> sm_sigma = sm_sigma.Zero();
-    sm_sigma(0, 0) = sm_sigma(1, 1) = sm_sigma(2, 2) = 0.;
-    sm_sigma(3, 3) = sm_sigma(4, 4) = sm_sigma(5, 5) = 0.;
-    sm_sigma(6, 6) = sm_sigma(7, 7) = sm_sigma(8, 8) = 10;
-    sm_sigma(9, 9) = sm_sigma(10, 10) = sm_sigma(11, 11) = 0;
+    Eigen::Matrix<double, 3, 3> sm_sigma = sm_sigma.Identity()*10;
 
     //Setup landmarks.
     SimulatedRadar radar1(Eigen::Vector3d(0, 40, -150)), radar2(Eigen::Vector3d(-120, 40, -150)), radar3(Eigen::Vector3d(-30, 0, -150)), radar4(
@@ -110,7 +99,6 @@ int main(int argc, char *argv[]) {
                       radar4.getRadar<ScalarOf(state)>(state.w_position, state.rotate_world_to_body)};
     };
 
-    //adekf::viz::PoseRenderer::displayPoints({radar1.position, radar2.position, radar3.position, radar4.position}, "red", 5);
     double rad_sigma = 1;
     GaussianNoiseVector radar_noise(0, rad_sigma, rad_sigma, rad_sigma);
     //Setup noise of measurement
@@ -136,7 +124,7 @@ int main(int argc, char *argv[]) {
 
     //setup naive imm
     adekf::NAIVE_IMM bad_imm{ekf.mu, ekf.sigma, {sm_sigma, ct_sigma}, straight_model, constant_turn_model};
-    bad_imm.addModels({0, 1});
+    bad_imm.addFilters({0, 1});
 
     //Setup of start conditions
     bad_imm.setTransitionProbabilities(t_prob);
@@ -190,6 +178,7 @@ int main(int argc, char *argv[]) {
     adekf::viz::PoseRenderer::displayPath(estimated_poses, "black");
     adekf::viz::PoseRenderer::displayPath(imm_estimated_poses, "green");
     adekf::viz::PoseRenderer::displayPath(bad_imm_estimated_poses, "blue");
+    adekf::viz::PoseRenderer::displayPoints({radar1.position, radar2.position, radar3.position, radar4.position}, "red", 5);
     adekf::viz::runGuis();
 
     return 0;
