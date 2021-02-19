@@ -246,8 +246,9 @@ void plot_real_gold_vs_(int argc, char *argv[]) {
         diffs(0) = (mean - goldMean).norm();
         diffs(1) = (badMean - goldMean).norm();
         adekf::viz::plotVector(diffs, "Gold Mean diff", 305, "mb");
-        diffs(0)=(weightedCovarianceSum(quats,covs,probs,mean)-goldWeightedCovarianceSum(gold_quats,gold_probs,goldMean)).norm();
-        diffs(1)=(badWeightedCovarianceSum(quats,covs,probs,mean)-goldWeightedCovarianceSum(gold_quats,gold_probs,goldMean)).norm();
+        auto goldCov=goldWeightedCovarianceSum(gold_quats,gold_probs,goldMean);
+        diffs(0)=(weightedCovarianceSum(quats,covs,probs,mean)-goldCov).norm();
+        diffs(1)=(badWeightedCovarianceSum(quats,covs,probs,badMean)-goldCov).norm();
         adekf::viz::plotVector(diffs, "Gold Sigma diff", 305, "mb");
     }
     viz::runGuis();

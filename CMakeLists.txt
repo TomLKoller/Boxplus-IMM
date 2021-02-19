@@ -4,8 +4,9 @@ project(BPIMM VERSION 1.0.0
         LANGUAGES CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=native")
-find_package(ADEKF CONFIG REQUIRED)
-find_package(ADEKF_VIZ CONFIG REQUIRED)
+
+#find_package(ADEKF CONFIG REQUIRED)
+#find_package(ADEKF_VIZ CONFIG REQUIRED)
 find_package(Boost 1.41 COMPONENTS system  REQUIRED)
 
 add_subdirectory(ADEKF)
@@ -26,9 +27,15 @@ find_package(VTK REQUIRED)
 # include all components
 
 add_executable(RadarFlightExample MACOSX_BUNDLE immBodyDistance.cpp)
-target_include_directories(RadarFlightExample PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include)
+target_include_directories(RadarFlightExample PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include ../Manifold-RTS-Smoother/include)
 target_link_libraries(RadarFlightExample PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(RadarFlightExample PUBLIC  cxx_std_17 )
+
+
+add_executable(SmoothRadarFlightExample MACOSX_BUNDLE immBodyDistanceSmooth.cpp)
+target_include_directories(SmoothRadarFlightExample PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include ../Manifold-RTS-Smoother/include)
+target_link_libraries(SmoothRadarFlightExample PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(SmoothRadarFlightExample PUBLIC  cxx_std_17 )
 
 add_executable(QuatMixing MACOSX_BUNDLE QuatMixing.cpp)
 target_include_directories(QuatMixing PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include)

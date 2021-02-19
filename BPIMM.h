@@ -161,6 +161,7 @@ namespace adekf {
         template<typename Derived>
         void setTransitionProbabilities(const Eigen::MatrixBase<Derived> &t_prob) {
             assert(t_prob.rows() == numFilters() && t_prob.rows() == t_prob.cols() && "Transition Probabilities need to be MxM for M models");
+
             transition_probabilities = t_prob;
         }
 
@@ -176,7 +177,7 @@ namespace adekf {
         /**
          * Adds multiple models to the filter bank.
          * Calls @see addFilter on each passed index.
-         * @param indices a list of indices of the dynamic models to add as filters-
+         * @param indices a list of indices of the dynamic models to add as filters
          */
         void addFilters(std::initializer_list<int> indices) {
             for (int index: indices) {
@@ -218,7 +219,7 @@ namespace adekf {
                     diff_sum = diff_sum.Zero();
                     for (int i = 0; i < numFilters(); i++) {
                         if (probabilities(i) < 0.)
-                            LOG_STREAM << "FAtal failure" LOG_END
+                            LOG_STREAM << "Fatal failure" LOG_END
                         else
                             diff_sum = diff_sum + probabilities(i) * (filter_bank[i].first.mu - sum);//.cwiseProduct(selectors[filter_bank[i].second]);
                     }
@@ -231,7 +232,7 @@ namespace adekf {
                 State sum = sum.Zero();
                 for (size_t i = 0; i < numFilters(); i++) {
                     if (probabilities(i) < 0.)
-                        LOG_STREAM << "FAtal failure" LOG_END
+                        LOG_STREAM << "Fatal failure" LOG_END
                     else if (probabilities(i) > 0.)
                         sum += filter_bank[i].first.mu * probabilities(i);
                 }
