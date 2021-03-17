@@ -37,6 +37,11 @@ target_include_directories(SmoothRadarFlightExample PUBLIC ${CMAKE_CURRENT_SOURC
 target_link_libraries(SmoothRadarFlightExample PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(SmoothRadarFlightExample PUBLIC  cxx_std_17 )
 
+add_executable(SmoothVectorFlightExample MACOSX_BUNDLE immVectorSmooth.cpp)
+target_include_directories(SmoothVectorFlightExample PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include ../Manifold-RTS-Smoother/include)
+target_link_libraries(SmoothVectorFlightExample PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(SmoothVectorFlightExample PUBLIC  cxx_std_17 )
+
 add_executable(QuatMixing MACOSX_BUNDLE QuatMixing.cpp)
 target_include_directories(QuatMixing PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include)
 target_link_libraries(QuatMixing PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})

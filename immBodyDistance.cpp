@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
 
     //Vectors to store path for evaluation
     std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d> > estimated_poses, imm_estimated_poses, bad_imm_estimated_poses;
-    double rmse_imm = 0, rmse_ekf = 0, rmse_bad_imm = 0.;
+    double rmse_imm = 0, rmse_ekf = 0, rmse_bad_imm = 0., orient_naive_rmse=0.;
     for (size_t i = 0; i < path.path.size(); i++) {
         //read Ground truth path
         auto way_point = path.path[i];
@@ -161,6 +161,7 @@ int main(int argc, char *argv[]) {
         rmse_imm += pow((imm.mu.w_position - way_point).norm(), 2);
         rmse_ekf += pow((ekf.mu.w_position - way_point).norm(), 2);
         rmse_bad_imm += pow((bad_imm.mu.w_position - way_point).norm(), 2);
+        orient_naive_rmse+=pow((bad_imm.mu.rotate_world_to_body - orient).norm(), 2);
         //store estimations for visualisation
         estimated_poses.push_back(ekf.mu.w_position);
         imm_estimated_poses.push_back(imm.mu.w_position);
@@ -169,7 +170,7 @@ int main(int argc, char *argv[]) {
     std::cout << "EKF RMSE: " << sqrt(rmse_ekf / path.path.size()) << "\t IMM RMSE: " << sqrt(rmse_imm / path.path.size()) << "\t BAD IMM RMSE: "
               << sqrt(rmse_bad_imm / path.path.size()) << " \t ERROR DIFF: " << sqrt(rmse_imm / path.path.size()) - sqrt(rmse_bad_imm / path.path.size())
               << std::endl;
-
+    std::cout << "Naive IMM Orient RMSE: " << sqrt(orient_naive_rmse / path.path.size()) << std::endl;
 
     //Comment in to visualize paths
     /*
