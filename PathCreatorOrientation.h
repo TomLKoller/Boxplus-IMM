@@ -40,9 +40,9 @@ public:
         Eigen::Vector3d ar{0, 0, M_PI /10.};
         size_t count = 0;
         //repeat 6 times (2 and a half round
-        for(int i=0; i < 6; i ++) {
+        for(int i=0; i < 10; i ++) {
             //a straight part
-            for (double t = 0; t < 10; t += deltaT) {
+            for (double t = 0; t < 6; t += deltaT) {
                 position += orient * body_velocity * deltaT;
                 count = (count + 1) % factor;
                 if (count == 1) {

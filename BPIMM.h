@@ -44,6 +44,7 @@ namespace adekf {
      */
     template<template<typename> class Filter, typename State, typename DYNAMIC_NOISE_TYPE, typename ...Models>
     class BPIMM {
+        protected:
         /**
          * Type of the covariance, automatically retrieved from the state type
          */
@@ -101,6 +102,8 @@ namespace adekf {
          * changes < weighted_mean_epsilon are interpreted as convergence
          */
         static constexpr double weighted_mean_epsilon = 1e-8;
+
+        private:
         /**
          * Flag to track whether multiple updates are performed after each other
          */
@@ -194,6 +197,7 @@ namespace adekf {
             assert(start_prob.rows() == numFilters() && start_prob.cols() == 1 && "Start Probabilities need to be Mx1 for M models");
             model_probabilities = start_prob;
         }
+         constexpr static auto getCurrentState = [](auto &filter) { return filter.mu; };
         /**
          * Computes the weighted sum of all filters.
          * Decides on its own whether it uses boxplus weighted sum or vector normal sum.
@@ -201,44 +205,52 @@ namespace adekf {
          * @param last  the last weighted sum as a starting point for the iterative algorithm.
          * @return The weighted sum of the filter means.
          */
-        State weightedStateSum(const Eigen::Matrix<double, -1, 1> &probabilities, const State &last) {
+        template <typename GetState = decltype(getCurrentState)>
+        State weightedStateSum(const Eigen::Matrix<double, -1, 1> &probabilities, const State &last, const GetState &stateGetter = getCurrentState)
+        {
             assert(abs(probabilities.sum() - 1) < 0.001 && "Probabilities must sum up to 1");
-            if constexpr(isManifoldState) {
+            if constexpr (isManifoldState)
+            {
                 State sum = last;
                 State old_sum = last;
                 decltype(sum - old_sum) diff_sum = diff_sum.Zero();
                 decltype(sum - old_sum) selector_weights = selector_weights.Zero();
-                for (size_t t = 0; t < numFilters(); t++) {
+                for (size_t t = 0; t < numFilters(); t++)
+                {
                     //  selector_weights += selectors[filter_bank[t].second] * probabilities[t];
                 }
 
                 int iterations = 0;
-                do {
+                do
+                {
                     iterations++;
                     old_sum = sum;
                     diff_sum = diff_sum.Zero();
-                    for (int i = 0; i < numFilters(); i++) {
+                    for (int i = 0; i < numFilters(); i++)
+                    {
                         if (probabilities(i) < 0.)
-                            LOG_STREAM << "Fatal failure" LOG_END
-                        else
-                            diff_sum = diff_sum + probabilities(i) * (filter_bank[i].first.mu - sum);//.cwiseProduct(selectors[filter_bank[i].second]);
+                            LOG_STREAM << "Fatal failure" LOG_END else diff_sum = diff_sum + probabilities(i) * (stateGetter(filter_bank[i].first) - sum); //.cwiseProduct(selectors[filter_bank[i].second]);
                     }
-                    sum = sum + diff_sum;//.cwiseQuotient(selector_weights);
-                } while (iterations <= max_iterations && (sum - old_sum).norm() > weighted_mean_epsilon);
+                    sum = sum + diff_sum; //.cwiseQuotient(selector_weights);
+                } while (iterations <= max_iterations && diff_sum.norm() > weighted_mean_epsilon);
                 if (iterations > max_iterations)
                     printf("Warning: stopped due to excess of iterations");
                 return sum;
-            } else {
+            }
+            else
+            {
                 State sum = sum.Zero();
-                for (size_t i = 0; i < numFilters(); i++) {
+                for (size_t i = 0; i < numFilters(); i++)
+                {
                     if (probabilities(i) < 0.)
-                        LOG_STREAM << "Fatal failure" LOG_END
-                    else if (probabilities(i) > 0.)
-                        sum += filter_bank[i].first.mu * probabilities(i);
+                        LOG_STREAM << "Fatal failure" LOG_END else if (probabilities(i) > 0.)
+                                sum += stateGetter(filter_bank[i].first) * probabilities(i);
                 }
                 return sum;
             }
         }
+
+        constexpr static auto getCurrentSigma = [](auto &filter) { return filter.sigma; };
         /**
          * Weighted Sum of covariances.
          * Calculates the covariance of a mixture of Gaussians.
@@ -246,36 +258,46 @@ namespace adekf {
          * @param target The mean of the mixed Gaussian
          * @return E[[Sigma_i -target]]
          */
-        Covariance weightedCovarianceSum(const Eigen::Matrix<double, -1, 1> &probabilities, const State &target) {
+        template <typename GetState = decltype(getCurrentState), typename GetSigma = decltype(getCurrentSigma)>
+        Covariance weightedCovarianceSum(const Eigen::Matrix<double, -1, 1> &probabilities, const State &target, const GetState &stateGetter = getCurrentState, const GetSigma &sigmaGetter = getCurrentSigma)
+        {
             assert(abs(probabilities.sum() - 1) < 0.001 && "Probabilities must sum up to 1");
-            if constexpr(isManifoldState) {
+            if constexpr (isManifoldState)
+            {
                 Covariance sum = Covariance::Zero(DOF, DOF);
                 Covariance weights = Covariance::Zero(DOF, DOF);
-                for (size_t i = 0; i < numFilters(); i++) {
-                    if (probabilities(i) > 0.) {
-                        auto diff = (filter_bank[i].first.mu - target).eval();
-                        auto plus_diff = eval((filter_bank[i].first.mu + getDerivator<DOF>()) - target);
+                for (size_t i = 0; i < numFilters(); i++)
+                {
+                    if (probabilities(i) > 0.)
+                    {
+                        decltype(mu - mu) diff;
+                        auto plus_diff = eval(stateGetter(filter_bank[i].first) + getDerivator<DOF>() - target);
                         Eigen::Matrix<double, DOF, DOF> D(DOF, DOF);
                         //Initialise the Jacobian
                         for (size_t j = 0; j < DOF; ++j)
-                            D.col(j) = plus_diff[j].v;   //write to cols since col major (transposes matrix )
+                        {
+                            D.col(j) = plus_diff[j].v; //write to cols since col major (transposes matrix )
+                            diff(j) = plus_diff[j].a;
+                        }
                         //Covariance select = selectors[filter_bank[i].second] * selectors[filter_bank[i].second].transpose() * probabilities(i);
-                        sum += probabilities(i) * (D.transpose() * (filter_bank[i].first.sigma) * D + diff * diff.transpose());
+                        sum += probabilities(i) * (D.transpose() * sigmaGetter(filter_bank[i].first) * D + diff * diff.transpose());
                         //weights += select;
                     }
                 }
-                assert(sum.determinant() > 0.);
-
-
+                //assert(isPositiveDefinite(sum));
 
                 return sum;
                 //Non-Manifold Case
-            } else {
+            }
+            else
+            {
                 Covariance sum = Covariance::Zero(DOF, DOF);
-                for (size_t i = 0; i < numFilters(); i++) {
-                    if (probabilities(i) > 0.) {
-                        auto diff = (filter_bank[i].first.mu - target).eval();
-                        sum += probabilities(i) * (filter_bank[i].first.sigma + diff * diff.transpose());
+                for (size_t i = 0; i < numFilters(); i++)
+                {
+                    if (probabilities(i) > 0.)
+                    {
+                        auto diff = (stateGetter(filter_bank[i].first) - target).eval();
+                        sum += probabilities(i) * (sigmaGetter(filter_bank[i].first) + diff * diff.transpose());
                     }
                 }
                 return sum;

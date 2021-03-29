@@ -424,7 +424,7 @@ namespace adekf
             size_t indefinit=0, improved=0;
               for (size_t k = start; k >= old_mus.size() - steps - 1; k--)
             {
-                std::cout << "IMM at iteration: " << k << std::endl;
+                //std::cout << "IMM at iteration: " << k << std::endl;
                 //bji
                 Eigen::MatrixXd bs = transition_probabilities;
                 Eigen::RowVectorXd es = (transition_probabilities.transpose() * old_model_probabilities[k]).transpose();
@@ -485,8 +485,8 @@ namespace adekf
                     if(smoothed_sigmas[k].determinant() < old_sigmas[k].determinant())
                             improved++;
             }
-            std::cout << "Indefinit Count: " << indefinit << std::endl;
-            std::cout << "Improved Count: " << improved << std::endl;
+            //std::cout << "Indefinit Count: " << indefinit << std::endl;
+            //std::cout << "Improved Count: " << improved << std::endl;
         }
 
         template <typename... Controls>

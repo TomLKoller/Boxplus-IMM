@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
     //Setup landmarks.
     SimulatedRadar radar1(Eigen::Vector3d(0, 40, -150)), radar2(Eigen::Vector3d(-120, 40, -150)), radar3(Eigen::Vector3d(-30, 0, -150)), radar4(Eigen::Vector3d(-90, 80, -150));
     //measurement model of 4 simultaneous landmark measurements
-    auto radar_model = [](auto &state, const SimulatedRadar &radar1, const SimulatedRadar &radar2, const SimulatedRadar &radar3, const SimulatedRadar &radar4) {
+    auto radar_model = [](auto &&state, const SimulatedRadar &radar1, const SimulatedRadar &radar2, const SimulatedRadar &radar3, const SimulatedRadar &radar4) {
         return Radar4{radar1.getRadar<ScalarOf(state)>(state.w_position, state.rotate_world_to_body),
                       radar2.getRadar<ScalarOf(state)>(state.w_position, state.rotate_world_to_body),
                       radar3.getRadar<ScalarOf(state)>(state.w_position, state.rotate_world_to_body),
@@ -117,136 +117,181 @@ int main(int argc, char *argv[])
     Eigen::Matrix<double, 12, 12> rm4_sigma = rm4_sigma.Zero();
     rm4_sigma.block<3, 3>(0, 0) = rm4_sigma.block<3, 3>(3, 3) = rm4_sigma.block<3, 3>(6, 6) = rm4_sigma.block<3, 3>(9, 9) = radar_noise.getCov();
 
-    //Setup ekf
-    adekf::ADEKF ekf{CT_State<double>(), Eigen::Matrix<double, 12, 12>::Identity()};
-    ekf.mu.w_velocity.x() = 10.;
-    ekf.mu.w_position.x() = -100;
-    ekf.mu.w_angular_rate.z() = 0.0;
-    //Setup Smoother
-    adekf::RTS_Smoother smoother{ekf};
-    adekf::Naive_RTS_Smoother naive_smoother{ekf};
+    size_t monte_carlo_runs = 100;
+    std::map<const char *, Eigen::Matrix<double, 6, 1>> metrics;
+    for (size_t run_number = 0; run_number < monte_carlo_runs; run_number++)
+    {
+        //Setup ekf
+        adekf::ADEKF ekf{CT_State<double>(), Eigen::Matrix<double, 12, 12>::Identity()};
+        ekf.mu.w_velocity.x() = 10.;
+        ekf.mu.w_position.x() = -100;
+        ekf.mu.w_angular_rate.z() = 0.0;
+        //Setup Smoother
+        adekf::RTS_Smoother smoother{ekf};
+        adekf::Naive_RTS_Smoother naive_smoother{ekf};
 
-    //setup BP RTS IMM
-    adekf::BPRTSIMM rts_imm{ekf.mu, ekf.sigma, {sm_sigma, ct_sigma}, straight_model, constant_turn_model};
-    adekf::Naive_RTSIMM naive_imm{ekf.mu, ekf.sigma, {sm_sigma, ct_sigma}, straight_model, constant_turn_model};
-    rts_imm.addFilters({0, 1});
-    naive_imm.addFilters({0, 1});
+        //setup BP RTS IMM
+        adekf::BPRTSIMM rts_imm{ekf.mu, ekf.sigma, {sm_sigma, ct_sigma}, straight_model, constant_turn_model};
+        adekf::Naive_RTSIMM naive_imm{ekf.mu, ekf.sigma, {sm_sigma, ct_sigma}, straight_model, constant_turn_model};
+        rts_imm.addFilters({0, 1});
+        naive_imm.addFilters({0, 1});
 
-    //Setup of start conditions
-    Eigen::Matrix<double, 2, 2> t_prob;
-    t_prob << 0.95, 0.05,
-        0.05, 0.95;
-    rts_imm.setTransitionProbabilities(t_prob);
-    naive_imm.setTransitionProbabilities(t_prob);
-    Eigen::Vector2d start_prob(0.5, 0.5);
-    rts_imm.setStartProbabilities(start_prob);
-    naive_imm.setStartProbabilities(start_prob);
+        //Setup of start conditions
+        Eigen::Matrix<double, 2, 2> t_prob;
+        t_prob << 0.95, 0.05,
+            0.05, 0.95;
+        rts_imm.setTransitionProbabilities(t_prob);
+        naive_imm.setTransitionProbabilities(t_prob);
+        Eigen::Vector2d start_prob(0.5, 0.5);
+        rts_imm.setStartProbabilities(start_prob);
+        naive_imm.setStartProbabilities(start_prob);
 
-    //Vectors to store path for evaluation
-    std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> ekf_estimated_poses, imm_estimated_poses, rts_imm_estimated_poses, smoother_estimated_poses;
-    
-    auto calcConsistency = [](auto &&filter_state, auto &&sigma, auto &&gt) {
-        auto diff = (filter_state - gt).eval();
-        return (diff.transpose() * sigma.inverse() * diff)(0);
-    };
-    adekf::aligned_vector<Radar4<double>> all_measurements;
+        
+        auto calcConsistency = [](auto &&filter_state, auto &&sigma, auto &&gt) {
+            auto diff = (filter_state - gt).eval();
+            return (diff.transpose() * sigma.inverse() * diff)(0);
+        };
+        adekf::aligned_vector<Radar4<double>> all_measurements;
 
-    auto calcPerformanceMetrics = [&](auto &filter,auto & title,  auto &stateGetter, auto &sigmaGetter) {
-        double rmse_pos = 0., rmse_orient = 0., consistency_state = 0., consistency_measurement = 0.;
-        Eigen::Matrix<double,6,1> state_delta=state_delta.Zero();
-        Radar4<double>::DeltaType<double> meas_delta=meas_delta.Zero();
-        size_t size=path.path.size();
-        for (size_t i = 0; i < size; i++)
+        auto calcPerformanceMetrics = [&](auto &filter, const char *title, auto &stateGetter, auto &sigmaGetter) {
+            double rmse_pos = 0., rmse_orient = 0., consistency_state = 0., consistency_measurement = 0.;
+            Eigen::Matrix<double, 6, 1> state_delta = state_delta.Zero();
+            Radar4<double>::DeltaType<double> meas_delta = meas_delta.Zero();
+            size_t size = path.path.size();
+            for (size_t i = 0; i < size; i++)
+            {
+                auto way_point = path.path[i];
+                auto orient = path.orientations[i].conjugate();
+                auto mu = stateGetter(filter, i);
+                rmse_pos += pow((mu.w_position - way_point).norm(), 2);
+                rmse_orient += pow((mu.rotate_world_to_body - orient).norm(), 2);
+                state_delta.segment<3>(0) += mu.rotate_world_to_body - orient;
+                state_delta.segment<3>(3) += mu.w_position - way_point;
+                consistency_state += calcConsistency(Sub_State{mu.rotate_world_to_body, mu.w_position}, sigmaGetter(filter, i).template block<6, 6>(0, 0), Sub_State{orient, way_point});
+                Radar4<double> expected_meas = radar_model(mu, radar1, radar2, radar3, radar4);
+                meas_delta += expected_meas - all_measurements[i];
+                auto input = radar_model(adekf::eval(mu + adekf::getDerivator<CT_State<double>::DOF>()), radar1, radar2, radar3, radar4).vector_part;
+                auto H=adekf::extractJacobi(input);
+                consistency_measurement += calcConsistency(all_measurements[i], H * sigmaGetter(filter, i) * H.transpose() + rm4_sigma, expected_meas);
+            }
+            auto metric = metrics.find(title);
+            Eigen::Matrix<double, 6, 1> metric_values;
+            metric_values << sqrt(rmse_pos / size),
+                sqrt(rmse_orient / size),
+                state_delta.norm() / size,
+                consistency_state / size,
+                meas_delta.norm() / size,
+                consistency_measurement / size;
+            if (metric == metrics.end())
+            {
+                metrics.emplace(title, metric_values);
+            }
+            else
+            {
+                metric->second += metric_values;
+            }
+            if (run_number == monte_carlo_runs - 1)
+            {
+                std::cout << setprecision(6) << title << " Performance values: " << std::endl
+                          << "\t Pos RMSE: " << metric->second(0) / monte_carlo_runs
+                          << "\t Orient RMSE: " << metric->second(1) / monte_carlo_runs
+                          << "\t Mu bias: " << metric->second(2) / monte_carlo_runs
+                          << "\t Mu Cons: " << metric->second(3) / monte_carlo_runs
+                          << "\t Z bias: " << metric->second(4) / monte_carlo_runs
+                          << "\t Z Cons: " << metric->second(5) / monte_carlo_runs
+                          << std::endl;
+            }
+        };
+#define EKS
+#define RTSIMMS
+#define NIMMS
+#define MEKS
+        std::vector<std::tuple<double>> all_controls;
+        for (size_t i = 1; i < path.path.size(); i++)
         {
+            //read Ground truth path
             auto way_point = path.path[i];
             auto orient = path.orientations[i].conjugate();
-            auto mu=stateGetter(filter,i);
-            rmse_pos += pow((mu.w_position - way_point).norm(), 2);
-            rmse_orient += pow((mu.rotate_world_to_body - orient).norm(), 2);
-            state_delta.segment<3>(0)+=mu.rotate_world_to_body-orient;
-            state_delta.segment<3>(3)+=mu.w_position-way_point;
-            consistency_state += calcConsistency(Sub_State{mu.rotate_world_to_body,mu.w_position}, sigmaGetter(filter,i).template block<6, 6>(0, 0), Sub_State{orient,way_point});
-            Radar4<double> expected_meas=radar_model(mu,radar1,radar2,radar3,radar4);
-            meas_delta+=expected_meas-all_measurements[i];
-            consistency_measurement += calcConsistency(all_measurements[i], rm4_sigma, expected_meas);
+            all_controls.emplace_back(deltaT);
+            Radar4<double> target{(radar1.getRadar(way_point, orient) + radar_noise.poll()),
+                                  (radar2.getRadar(way_point, orient) + radar_noise.poll()),
+                                  (radar3.getRadar(way_point, orient) + radar_noise.poll()),
+                                  (radar4.getRadar(way_point, orient) + radar_noise.poll())};
+            all_measurements.push_back(target);
+            #ifdef RTSIMMS
+            //RTSIMM
+            rts_imm.interaction();
+            rts_imm.predictWithNonAdditiveNoise(deltaT);
+            rts_imm.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
+            rts_imm.combination();
+            rts_imm.storeEstimation();
+            #endif
+            #ifdef NIMMS
+            //Naive IMM
+            naive_imm.interaction();
+            naive_imm.predictWithNonAdditiveNoise(deltaT);
+            naive_imm.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
+
+            naive_imm.combination();
+
+            naive_imm.storeEstimation();
+            #endif
+            #ifdef EKS
+            //[+]-EKS
+            smoother.predictWithNonAdditiveNoise(constant_turn_model, ct_sigma, deltaT);
+            smoother.storePredictedEstimation();
+
+            smoother.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
+            smoother.storeEstimation();
+            #endif
+            //(M)-EKS
+            #ifdef MEKS
+            naive_smoother.predictWithNonAdditiveNoise(constant_turn_model, ct_sigma, deltaT);
+            naive_smoother.storePredictedEstimation();
+            naive_smoother.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
+            naive_smoother.storeEstimation();
+            #endif
         }
-        std::cout << title << " Performance values: " << std::endl
-        <<"\t Pos RMSE: " <<sqrt(rmse_pos/size)
-        <<"\t Orient RMSE: " <<sqrt(rmse_orient/size)
-        <<"\t Mu bias: " << state_delta.norm()/size
-        <<"\t Mu Cons: " <<consistency_state/size
-        <<"\t Z bias: " << meas_delta.norm()/size
-        <<"\t Z Cons: " <<consistency_measurement/size
-        <<std::endl;
-        };
 
-    auto storeRMSETo = [&](auto &&way_point, auto &&orient) {
-#ifdef SHOW_VIZ
-        //store estimations for visualisation
-        ekf_estimated_poses.push_back(smoother.mu.w_position);
-        imm_estimated_poses.push_back(rts_imm.mu.w_position);
-#endif //SHOW_VIZ
-    };
-    storeRMSETo(path.path[0], path.orientations[0].conjugate());
-    std::vector<std::tuple<double>> all_controls;
-    for (size_t i = 1; i < path.path.size(); i++)
-    {
-        //read Ground truth path
-        auto way_point = path.path[i];
-        auto orient = path.orientations[i].conjugate();
-        //perform interaction
-        rts_imm.interaction();
-        naive_imm.interaction();
-        //call predict methods
-        smoother.predictWithNonAdditiveNoise(constant_turn_model, ct_sigma, deltaT);
-        smoother.storePredictedEstimation();
-        naive_smoother.predictWithNonAdditiveNoise(constant_turn_model, ct_sigma, deltaT);
-        naive_smoother.storePredictedEstimation();
-        rts_imm.predictWithNonAdditiveNoise(deltaT);
-        naive_imm.predictWithNonAdditiveNoise(deltaT);
-        all_controls.emplace_back(deltaT);
-        //filter updates
-        Radar4<double> target{(radar1.getRadar(way_point, orient) + radar_noise.poll()),
-                              (radar2.getRadar(way_point, orient) + radar_noise.poll()),
-                              (radar3.getRadar(way_point, orient) + radar_noise.poll()),
-                              (radar4.getRadar(way_point, orient) + radar_noise.poll())};
-        all_measurements.push_back(target);
-        rts_imm.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
-        naive_imm.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
-        smoother.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
-        smoother.storeEstimation();
-        naive_smoother.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
-        naive_smoother.storeEstimation();
-        rts_imm.combination();
-        naive_imm.combination();
-        rts_imm.storeEstimation();
-        naive_imm.storeEstimation();
+        //Getters for calc metrics
+        auto getOldMu = [](auto &filter, int i) { return filter.old_mus[i]; };
+        auto getOldSigma = [](auto &filter, int i) { return filter.old_sigmas[i]; };
+        auto getSmoothedMu = [](auto &filter, int i) { return filter.smoothed_mus[i]; };
+        auto getSmoothedSigma = [](auto &filter, int i) { return filter.smoothed_sigmas[i]; };
+
+        //call all smoothers
+        //Call metrics for each filter
+        #ifdef EKS
+        smoother.smoothAllWithNonAdditiveNoise(constant_turn_model, ct_sigma, all_controls);
+        calcPerformanceMetrics(smoother, "[+]-EKF", getOldMu, getOldSigma);
+        calcPerformanceMetrics(smoother, "[+]-EKS", getSmoothedMu, getSmoothedSigma);
+        #endif
+        #ifdef MEKS
+        naive_smoother.smoothAllWithNonAdditiveNoise(constant_turn_model, ct_sigma, all_controls);
+         calcPerformanceMetrics(naive_smoother, "(M)-EKS", getSmoothedMu, getSmoothedSigma);
+        #endif
+        #ifdef RTSIMMS
+        rts_imm.smoothAllWithNonAdditiveNoise(all_controls);
+         calcPerformanceMetrics(rts_imm, "[+]-IMM", getOldMu, getOldSigma);
+          calcPerformanceMetrics(rts_imm, "[+]-RTSIMMS", getSmoothedMu, getSmoothedSigma);
+        #endif
+        #ifdef NIMMS
+        naive_imm.smoothAllWithNonAdditiveNoise(all_controls);
+
+        calcPerformanceMetrics(naive_imm, "Naive-IMM", getOldMu, getOldSigma);
+       
+        calcPerformanceMetrics(naive_imm, "Naive-(M)-RTSIMMS", getSmoothedMu, getSmoothedSigma);
+        #endif
+
+       
+
+       
+       
     }
-    //call all smoothers
-    smoother.smoothAllWithNonAdditiveNoise(constant_turn_model, ct_sigma, all_controls);
-    naive_smoother.smoothAllWithNonAdditiveNoise(constant_turn_model, ct_sigma, all_controls);
-    rts_imm.smoothAllWithNonAdditiveNoise(all_controls);
-    naive_imm.smoothAllWithNonAdditiveNoise(all_controls);
-    //smoother.smoothIntervalWithNonAdditiveNoise(1,-1,free_model, fm_sigma, all_controls);
-   
 
-   //Getters for calc metrics
-    auto getOldMu=[](auto & filter, int i){return filter.old_mus[i];};
-    auto getOldSigma=[](auto & filter, int i){return filter.old_sigmas[i];};
-    auto getSmoothedMu=[](auto & filter, int i){return filter.smoothed_mus[i];};
-    auto getSmoothedSigma=[](auto & filter, int i){return filter.smoothed_sigmas[i];};
-
-    //Call metrics for each filter
-    calcPerformanceMetrics(smoother,"[+]-EKF",getOldMu,getOldSigma);
-    calcPerformanceMetrics(smoother,"[+]-EKS",getSmoothedMu,getSmoothedSigma);
-    calcPerformanceMetrics(naive_smoother,"(M)-EKS",getSmoothedMu,getSmoothedSigma);
-    calcPerformanceMetrics(rts_imm,"[+]-IMM",getOldMu,getOldSigma);
-    calcPerformanceMetrics(naive_imm,"Naive-IMM",getOldMu,getOldSigma);
-    calcPerformanceMetrics(rts_imm,"[+]-RTSIMMS",getSmoothedMu,getSmoothedSigma);
-    calcPerformanceMetrics(naive_imm,"Naive-(M)-RTSIMMS",getSmoothedMu,getSmoothedSigma);
-    
-
-#ifdef SHOW_VIZ
+#ifdef SHOW_VIZ //Currently not working
+//Vectors to store path for evaluation
+        std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> ekf_estimated_poses, imm_estimated_poses, rts_imm_estimated_poses, smoother_estimated_poses;
     //visualize paths
     adekf::viz::initGuis(argc, argv);
     adekf::viz::PoseRenderer::displayPath(path.path, "red");
