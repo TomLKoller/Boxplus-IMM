@@ -206,8 +206,8 @@ namespace adekf
                 if (smoothed_sigmas[k].determinant() < old_sigmas[k].determinant())
                     improved++;
             }
-            //std::cout << "Indefinit Count: " << indefinit << std::endl;
-            //std::cout << "Improved Count: " << improved << std::endl;
+            std::cout << "Indefinit Count: " << indefinit << std::endl;
+            std::cout << "Improved Count: " << improved << std::endl;
         }
         /**
          * @brief Smooth all estimates

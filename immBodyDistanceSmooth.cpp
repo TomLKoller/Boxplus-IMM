@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
         //orientation and angular rate stay constant
     };
     //Setup covariance of straight model
-    Eigen::Matrix<double, 3, 3> sm_sigma = sm_sigma.Identity() * 10;
+   adekf::SquareMatrixType<double, 3> sm_sigma = sm_sigma.Identity() * 10;
 
     auto free_model = [](auto &state, auto noise, double deltaT) {
         state.w_velocity += NOISE(0, 3) * deltaT;
