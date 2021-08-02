@@ -2,6 +2,8 @@
 This repository contains the [+]-IMM. A generic interacting multiple model filter which can handle manifold structures  (e.g. quaternions) in the state space. 
 It can be used in vector only mode aswell.  This Readme is not intended to explain the [+]-IMM. Please refer to the publication:
 "The Interacting Multiple Model Filter on Boxplus-Manifolds" -Tom Koller and Udo Frese; Septembre 2020.
+or "The Interacting Multiple Model Filter and Smoother on Boxplus-Manifolds" - Tom Koller and Udo Frese, July 2021
+https://www.mdpi.com/1424-8220/21/12/4164
 
 In addition, it also contains the Boxplus-IMM Smoother which is described in the next section.
 
@@ -167,7 +169,8 @@ std::cout << imm.sigma << std::endl;
 # Boxplus-IMM-Smoother ([+]-RTSIMMS)
 The [+]-RTSIMMS adds smoothing capability to the [+]-IMM. It builds upon the [+]-EKS (https://github.com/TomLKoller/Manifold-RTS-Smoother).
 
-A publication is on its way.
+Please refer to the publication: "The interacting Multiple Model Filter and Smoother on Boxplus-Manifolds"-Tom Koller and Udo Frese, July,2021
+https://www.mdpi.com/1424-8220/21/12/4164
 
 ## Installation 
 Follow the installation instructions for the [+]-IMM and the [+]-EKS.
