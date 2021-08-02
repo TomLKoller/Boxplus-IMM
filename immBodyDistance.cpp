@@ -108,7 +108,7 @@ int main(int argc, char *argv[]) {
     //Setup ekf
     adekf::ADEKF ekf{CT_State<double>(), Eigen::Matrix<double, 12, 12>::Identity()};
     ekf.mu.w_velocity.x() = 10.;
-    ekf.mu.w_position.x() = -100;
+    ekf.mu.w_position= path.path[0];
     ekf.mu.w_angular_rate.z() = 0.0;
     //setup bp imm
     adekf::BPIMM imm{ekf.mu, ekf.sigma, {sm_sigma, ct_sigma}, straight_model, constant_turn_model};

@@ -8,6 +8,7 @@
 #include "PathCreatorOrientation.h"
 #include "SimulatedBodyMeas.h"
 #include "GaussianNoiseVector.h"
+#include <numeric>
 
 #define GRAVITY_CONSTANT 9.81
 //#define SHOW_VIZ
@@ -23,6 +24,15 @@ ADEKF_MANIFOLD(Radar4, , (3, radar1), (3, radar2), (3, radar3), (3, radar4))
 #include "Naive_RTSIMM.h"
 #include "rts-smoother.hpp"
 #include "naive_rts-smoother.hpp"
+
+//#define EKS
+//#define MEKS
+#define RTSIMMS
+#define NIMMS
+#define EKF_MODEL constant_turn_model
+#define EKF_SIGMA ct_sigma
+#define NOISE_ON_CONSTANT_TURN 0.//10. for consistent evaluation // 0 for original implementation
+
 
 /**
  * The constant turn model function.
@@ -60,10 +70,10 @@ struct constant_turn_model
             -c1 * wz - c3 * wx * wy, c3 * d2, c1 * wx - c3 * wy * wz,
             c1 * wy - c3 * wx * wz, -c1 * wx - c3 * wy * wz, c3 * d3;
         //Implement constant turn dynamic
-        state.w_position += B * state.w_velocity + state.w_velocity * deltaT;
+        state.w_position += B * state.w_velocity + state.w_velocity * deltaT+NOISE(3,3)*deltaT;
         state.w_velocity += A * state.w_velocity;
         state.rotate_world_to_body = state.rotate_world_to_body * adekf::SO3(state.w_angular_rate * deltaT).conjugate();
-        state.w_angular_rate += noise * deltaT;
+        state.w_angular_rate += NOISE(0,3) * deltaT;
     };
     //Create static object
 } constant_turn_model;
@@ -80,16 +90,16 @@ int main(int argc, char *argv[])
     PathCreator path{deltaT, 10};
 
     //Setup covariance of constant turn model
-    Eigen::Matrix<double, 3, 3> ct_sigma = ct_sigma.Identity() * 0.1;
-
+    adekf::SquareMatrixType<double, 6> ct_sigma = ct_sigma.Identity() * 0.1;
+    (ct_sigma.block<3,3>(3,3))=Eigen::Matrix3d::Identity()*NOISE_ON_CONSTANT_TURN;
     //straight model
     auto straight_model = [](auto &state, auto noise, double deltaT) {
-        state.w_velocity += noise * deltaT;
+        state.w_velocity += NOISE(0,3) * deltaT;
         state.w_position += state.w_velocity * deltaT;
         //orientation and angular rate stay constant
     };
     //Setup covariance of straight model
-   adekf::SquareMatrixType<double, 3> sm_sigma = sm_sigma.Identity() * 10;
+   adekf::SquareMatrixType<double, 6> sm_sigma = sm_sigma.Identity() * 10;
 
     auto free_model = [](auto &state, auto noise, double deltaT) {
         state.w_velocity += NOISE(0, 3) * deltaT;
@@ -117,19 +127,19 @@ int main(int argc, char *argv[])
     Eigen::Matrix<double, 12, 12> rm4_sigma = rm4_sigma.Zero();
     rm4_sigma.block<3, 3>(0, 0) = rm4_sigma.block<3, 3>(3, 3) = rm4_sigma.block<3, 3>(6, 6) = rm4_sigma.block<3, 3>(9, 9) = radar_noise.getCov();
 
-    size_t monte_carlo_runs = 100;
-    std::map<const char *, Eigen::Matrix<double, 6, 1>> metrics;
+    constexpr size_t monte_carlo_runs = 100;
+    std::map<const char *, adekf::aligned_vector<Eigen::Matrix<double, 6, 1> > > metrics;
     for (size_t run_number = 0; run_number < monte_carlo_runs; run_number++)
     {
         //Setup ekf
         adekf::ADEKF ekf{CT_State<double>(), Eigen::Matrix<double, 12, 12>::Identity()};
         ekf.mu.w_velocity.x() = 10.;
-        ekf.mu.w_position.x() = -100;
+        ekf.mu.w_position=path.path[0];
         ekf.mu.w_angular_rate.z() = 0.0;
         //Setup Smoother
         adekf::RTS_Smoother smoother{ekf};
         adekf::Naive_RTS_Smoother naive_smoother{ekf};
-
+#if defined(RTSIMMS) || defined(NIMMS)
         //setup BP RTS IMM
         adekf::BPRTSIMM rts_imm{ekf.mu, ekf.sigma, {sm_sigma, ct_sigma}, straight_model, constant_turn_model};
         adekf::Naive_RTSIMM naive_imm{ekf.mu, ekf.sigma, {sm_sigma, ct_sigma}, straight_model, constant_turn_model};
@@ -145,7 +155,7 @@ int main(int argc, char *argv[])
         Eigen::Vector2d start_prob(0.5, 0.5);
         rts_imm.setStartProbabilities(start_prob);
         naive_imm.setStartProbabilities(start_prob);
-
+#endif //IMMS
         
         auto calcConsistency = [](auto &&filter_state, auto &&sigma, auto &&gt) {
             auto diff = (filter_state - gt).eval();
@@ -168,13 +178,14 @@ int main(int argc, char *argv[])
                 state_delta.segment<3>(0) += mu.rotate_world_to_body - orient;
                 state_delta.segment<3>(3) += mu.w_position - way_point;
                 consistency_state += calcConsistency(Sub_State{mu.rotate_world_to_body, mu.w_position}, sigmaGetter(filter, i).template block<6, 6>(0, 0), Sub_State{orient, way_point});
+                //consistency_state+=calcConsistency(mu.w_position,sigmaGetter(filter,i).template block<3,3>(3,3),way_point);
                 Radar4<double> expected_meas = radar_model(mu, radar1, radar2, radar3, radar4);
                 meas_delta += expected_meas - all_measurements[i];
                 auto input = radar_model(adekf::eval(mu + adekf::getDerivator<CT_State<double>::DOF>()), radar1, radar2, radar3, radar4).vector_part;
                 auto H=adekf::extractJacobi(input);
                 consistency_measurement += calcConsistency(all_measurements[i], H * sigmaGetter(filter, i) * H.transpose() + rm4_sigma, expected_meas);
             }
-            auto metric = metrics.find(title);
+           
             Eigen::Matrix<double, 6, 1> metric_values;
             metric_values << sqrt(rmse_pos / size),
                 sqrt(rmse_orient / size),
@@ -182,30 +193,32 @@ int main(int argc, char *argv[])
                 consistency_state / size,
                 meas_delta.norm() / size,
                 consistency_measurement / size;
+            auto metric = metrics.find(title);
             if (metric == metrics.end())
             {
-                metrics.emplace(title, metric_values);
+                metrics.emplace(title,  adekf::aligned_vector<Eigen::Matrix<double, 6, 1> >());
+                metric=metrics.find(title);
             }
-            else
-            {
-                metric->second += metric_values;
-            }
+            metric->second.push_back( metric_values);
             if (run_number == monte_carlo_runs - 1)
             {
+                Eigen::Matrix<double,6,1> zeros=zeros.Zero(); // Is instantiated before so it has the type Eigen::Matrix instead of cwise nullary exp. Deduces wrong type in accumulate otherwise.
+                 Eigen::Matrix<double,6,1> mean=std::accumulate(metric->second.begin(),metric->second.end(),zeros)/monte_carlo_runs;
+                 Eigen::Matrix<double,6,1> sigma=std::accumulate(metric->second.begin(),metric->second.end(),zeros,[&](const auto & a, const auto & b){
+                    auto diff=b-mean;
+                    return a+diff*diff.transpose().diagonal();
+                })/monte_carlo_runs;
                 std::cout << setprecision(6) << title << " Performance values: " << std::endl
-                          << "\t Pos RMSE: " << metric->second(0) / monte_carlo_runs
-                          << "\t Orient RMSE: " << metric->second(1) / monte_carlo_runs
-                          << "\t Mu bias: " << metric->second(2) / monte_carlo_runs
-                          << "\t Mu Cons: " << metric->second(3) / monte_carlo_runs
-                          << "\t Z bias: " << metric->second(4) / monte_carlo_runs
-                          << "\t Z Cons: " << metric->second(5) / monte_carlo_runs
+                          << "\t Pos RMSE: " << mean(0)
+                          << "\t Orient RMSE: " << mean(1)
+                          << "\t Mu bias: " << mean(2)
+                          << "\t Mu Cons: " << mean(3)
+                          << "\t Z bias: " << mean(4)
+                          << "\t Z Cons: " << mean(5)                           
                           << std::endl;
+                          std::cout <<  sigma.transpose()<< std::endl;
             }
         };
-#define EKS
-#define RTSIMMS
-#define NIMMS
-#define MEKS
         std::vector<std::tuple<double>> all_controls;
         for (size_t i = 1; i < path.path.size(); i++)
         {
@@ -238,7 +251,7 @@ int main(int argc, char *argv[])
             #endif
             #ifdef EKS
             //[+]-EKS
-            smoother.predictWithNonAdditiveNoise(constant_turn_model, ct_sigma, deltaT);
+            smoother.predictWithNonAdditiveNoise(EKF_MODEL, EKF_SIGMA, deltaT);
             smoother.storePredictedEstimation();
 
             smoother.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
@@ -246,7 +259,7 @@ int main(int argc, char *argv[])
             #endif
             //(M)-EKS
             #ifdef MEKS
-            naive_smoother.predictWithNonAdditiveNoise(constant_turn_model, ct_sigma, deltaT);
+            naive_smoother.predictWithNonAdditiveNoise(EKF_MODEL, EKF_SIGMA, deltaT);
             naive_smoother.storePredictedEstimation();
             naive_smoother.update(radar_model, rm4_sigma, target, radar1, radar2, radar3, radar4);
             naive_smoother.storeEstimation();
@@ -262,12 +275,12 @@ int main(int argc, char *argv[])
         //call all smoothers
         //Call metrics for each filter
         #ifdef EKS
-        smoother.smoothAllWithNonAdditiveNoise(constant_turn_model, ct_sigma, all_controls);
+        smoother.smoothAllWithNonAdditiveNoise(EKF_MODEL, EKF_SIGMA, all_controls);
         calcPerformanceMetrics(smoother, "[+]-EKF", getOldMu, getOldSigma);
         calcPerformanceMetrics(smoother, "[+]-EKS", getSmoothedMu, getSmoothedSigma);
         #endif
         #ifdef MEKS
-        naive_smoother.smoothAllWithNonAdditiveNoise(constant_turn_model, ct_sigma, all_controls);
+        naive_smoother.smoothAllWithNonAdditiveNoise(EKF_MODEL, EKF_SIGMA, all_controls);
          calcPerformanceMetrics(naive_smoother, "(M)-EKS", getSmoothedMu, getSmoothedSigma);
         #endif
         #ifdef RTSIMMS
@@ -286,21 +299,27 @@ int main(int argc, char *argv[])
        
 
        
-       
-    }
-
+     
+//#define SHOW_VIZ
 #ifdef SHOW_VIZ //Currently not working
 //Vectors to store path for evaluation
         std::vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> ekf_estimated_poses, imm_estimated_poses, rts_imm_estimated_poses, smoother_estimated_poses;
     //visualize paths
     adekf::viz::initGuis(argc, argv);
     adekf::viz::PoseRenderer::displayPath(path.path, "red");
+    for(auto state: smoother.old_mus){
+        ekf_estimated_poses.push_back(state.w_position);
+    }
     adekf::viz::PoseRenderer::displayPath(ekf_estimated_poses, "black");
-    adekf::viz::PoseRenderer::displayPath(imm_estimated_poses, "green");
+    /*adekf::viz::PoseRenderer::displayPath(imm_estimated_poses, "green");
     adekf::viz::PoseRenderer::displayPath(rts_imm_estimated_poses, "blue");
-    adekf::viz::PoseRenderer::displayPath(smoother_estimated_poses, "orange");
+    adekf::viz::PoseRenderer::displayPath(smoother_estimated_poses, "orange");*/
     adekf::viz::PoseRenderer::displayPoints({radar1.position, radar2.position, radar3.position, radar4.position}, "red", 5);
     adekf::viz::runGuis();
 #endif //SHOW_VIZ
+      
+    }
+    std::cout << "Naive indefinite Counter: " << adekf::Naive_RTS_Smoother<CT_State<double>>::indefinite_counter << std::endl;
+    std::cout << "[+] indefinite Counter: " << adekf::RTS_Smoother<CT_State<double>>::indefinite_counter << std::endl;
     return 0;
 }

@@ -33,11 +33,12 @@ public:
     PathCreator(double deltaT,int factor) {
         deltaT = deltaT / factor;
         //std::cout << "DeltaT "<< deltaT<< std::endl;
-        Eigen::Vector3d position{-100,0,0};
+        Eigen::Vector3d position{-80,20,0};
         adekf::SO3d orient{};
         Eigen::Vector3d body_velocity{10., 0, 0};
-
-        Eigen::Vector3d ar{0, 0, M_PI /10.};
+        double thalf=5;
+        Eigen::Vector3d ar{0, 0, 0};
+        Eigen::Vector3d aar{0,0,M_PI/pow(thalf,2)};
         size_t count = 0;
         //repeat 6 times (2 and a half round
         for(int i=0; i < 10; i ++) {
@@ -51,8 +52,12 @@ public:
                 }
             }
             // a curved part
-            for (double t = 0; t < 10.; t += deltaT) {
-                orient = orient * adekf::SO3(ar * deltaT);
+            for (double t = 0; t < 2*thalf; t += deltaT) {
+                if (abs(t-thalf) <deltaT/2.){
+                aar=-aar;}
+                
+                orient = orient * adekf::SO3((ar * deltaT+0.5*aar*pow(deltaT,2)));
+                ar+=aar*deltaT;
                 position += orient * body_velocity * deltaT;
                 count = (count + 1) % factor;
                 if (count == 1) {
@@ -60,7 +65,8 @@ public:
                     orientations.push_back(orient);
                 }
             }
-
+            aar=-aar;
+            
 
         }
 

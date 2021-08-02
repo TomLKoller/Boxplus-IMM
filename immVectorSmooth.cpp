@@ -71,6 +71,8 @@ struct constant_turn_model
  */
 int main(int argc, char *argv[])
 {
+
+    adekf::viz::initGuis(argc, argv);
     constexpr double deltaT = 0.05;
     PathCreator path{deltaT, 10};
 
@@ -115,7 +117,7 @@ int main(int argc, char *argv[])
     //Setup ekf
     adekf::ADEKF ekf{Vector_State<double>(), Eigen::Matrix<double, adekf::DOFOf<Vector_State<double>>, adekf::DOFOf<Vector_State<double>>>::Identity()};
     ekf.mu.w_velocity.x() = 10.;
-    ekf.mu.w_position.x() = -100;
+    ekf.mu.w_position=path.path[0];
     ekf.mu.w_angular_rate.z() = 0.0;
     //Setup Smoother
     adekf::RTS_Smoother smoother{ekf};
@@ -173,6 +175,7 @@ int main(int argc, char *argv[])
         smoother.storeEstimation();
         rts_imm.combination();
         rts_imm.storeEstimation();
+        adekf::viz::plotVector(rts_imm.getModelProbabilities(),"Model Probabilities",path.path.size(),"sc");
         storeRMSETo(way_point);
     }
     smoother.smoothAllWithNonAdditiveNoise(constant_turn_model, ct_sigma, all_controls);
@@ -199,7 +202,6 @@ int main(int argc, char *argv[])
 
 #ifdef SHOW_VIZ
     //visualize paths
-    adekf::viz::initGuis(argc, argv);
     adekf::viz::PoseRenderer::displayPath(path.path, "red");
     adekf::viz::PoseRenderer::displayPath(ekf_estimated_poses, "black");
     adekf::viz::PoseRenderer::displayPath(imm_estimated_poses, "green");
