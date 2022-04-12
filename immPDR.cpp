@@ -83,10 +83,13 @@ int main(int argc, char *argv[])
     
     //zupt model
     adekf::SquareMatrixType<double, 3> small_sigma = small_sigma.Identity() * 0.001;   
-    adekf::SquareMatrixType<double, 3> high_sigma = high_sigma.Identity() * 3;
+    adekf::SquareMatrixType<double, 1> high_sigma = high_sigma.Identity() * 3;
     auto zupt_model = [](auto state) {
         return state.velocity;
      };
+    auto step_model=[](auto state){
+        return state.velocity.norm();
+    };
   
   
         XsensPose<double> start_state{};
@@ -110,7 +113,7 @@ int main(int argc, char *argv[])
         rts_imm.setStartProbabilities(start_prob);
         adekf::viz::initGuis(argc, argv);
         adekf::viz::displayPose(&rts_imm,"red");
-        std::ofstream output{"../trajectory_data.csv"};
+        std::ofstream output{"/home/tkoller/repositories/pyshoe/trajectory_data.csv"};
         output << "px,py,pz,vx,vy,vz,roll,pitch,yaw" << std::endl;
         std::thread loop([&](){
         for(auto data_point: data){
@@ -120,7 +123,7 @@ int main(int argc, char *argv[])
             rts_imm.predictWithNonAdditiveNoise(data_point.segment<3>(3),data_point.segment<3>(0),deltaT);
             Eigen::Vector2d log_likelihood;
             rts_imm.getFilter(0).update(log_likelihood(0), zupt_model, small_sigma, Eigen::Vector3d::Zero()); 
-            rts_imm.getFilter(1).update(log_likelihood(1), zupt_model, high_sigma, Eigen::Vector3d::Zero());
+            rts_imm.getFilter(1).update(log_likelihood(1), step_model, high_sigma,3.);
             Eigen::Vector2d likelihood=log_likelihood.unaryExpr([](auto elem) {return std::exp(elem);});//calc probability
             rts_imm.passMeasurementProbabilities(likelihood);
             rts_imm.combination();
