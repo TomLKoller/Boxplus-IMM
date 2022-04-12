@@ -46,3 +46,10 @@ add_executable(QuatMixing MACOSX_BUNDLE QuatMixing.cpp)
 target_include_directories(QuatMixing PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include)
 target_link_libraries(QuatMixing PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(QuatMixing PUBLIC  cxx_std_17 )
+
+
+
+add_executable(pdrIMM MACOSX_BUNDLE immPDR.cpp CSV_Reader.cpp)
+target_include_directories(pdrIMM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include ../Manifold-RTS-Smoother/include)
+target_link_libraries(pdrIMM PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(pdrIMM PUBLIC  cxx_std_17 )
