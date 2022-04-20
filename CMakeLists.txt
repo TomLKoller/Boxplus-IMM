@@ -53,3 +53,9 @@ add_executable(pdrIMM MACOSX_BUNDLE immPDR.cpp CSV_Reader.cpp)
 target_include_directories(pdrIMM PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include ../Manifold-RTS-Smoother/include)
 target_link_libraries(pdrIMM PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})
 target_compile_features(pdrIMM PUBLIC  cxx_std_17 )
+
+
+add_executable(pdrIMMGrid MACOSX_BUNDLE immPDRGrid.cpp CSV_Reader.cpp)
+target_include_directories(pdrIMMGrid PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ADEKF/include/misc ADEKF_VIZ/include ../Manifold-RTS-Smoother/include)
+target_link_libraries(pdrIMMGrid PUBLIC  ${Boost_LIBRARIES}  ADEKF ADEKF_VIZ ${CMAKE_THREAD_LIBS_INIT})
+target_compile_features(pdrIMMGrid PUBLIC  cxx_std_17 )

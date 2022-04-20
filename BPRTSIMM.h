@@ -145,6 +145,7 @@ namespace adekf
             size_t indefinit = 0, improved = 0;
             for (size_t k = start; k >= old_mus.size() - steps - 1; k--)
             {
+                
                 //std::cout << "IMM at iteration: " << k << std::endl;
                 //bji
                 Eigen::MatrixXd bs = this->transition_probabilities;
@@ -152,7 +153,7 @@ namespace adekf
                 //Calc mixing probs
                 for (size_t j = 0; j < this->numFilters(); j++)
                 {
-                    bs.col(j) = bs.col(j).array() * old_model_probabilities[k].array();
+                    //bs.col(j) = bs.col(j).array() * old_model_probabilities[k].array(); //old model probability shortens by dividation with ds still has influence by es
                     bs.row(j) = bs.row(j).array() / es.array(); //Due to multiplication order of operations does not matter
                 }
 
@@ -163,7 +164,7 @@ namespace adekf
                 {
                     mixing_prob.col(j) = mixing_prob.col(j).array() * smoothed_model_probabilities[k + 1].array();
                     mixing_prob.row(j) = mixing_prob.row(j).array() / ds.array(); //Due to multiplication order of operations does not matter
-                }
+                 }
 
                 auto apply_smoothStep = [](auto &dynamicModel, auto &filter, auto &k, auto &Q, auto &controls, auto &X0, auto &P0) {
                     filter.smoothSingleStep(k, dynamicModel, Q, controls, X0, P0);
@@ -171,14 +172,29 @@ namespace adekf
                 //X0j k|N  P0j k|N
                 for (size_t j = 0; j < this->numFilters(); j++)
                 {
+                    
+                    //std::cout << "mixing: " << mixing_prob.row(j) << std::endl;
                     auto getSmoothedState = [&k](auto &filter) { return filter.smoothed_mus[k + 1]; };
                     State X0 = this->weightedStateSum(mixing_prob.col(j), smoothed_mus[k + 1], getSmoothedState);
                     Covariance P0 = this->weightedCovarianceSum(mixing_prob.col(j), X0, getSmoothedState, [&k](auto &filter) { return filter.smoothed_sigmas[k + 1]; });
-                    //Covariance P0=old_sigmas[k];//PLaceholder
                     //Mode Matching Smoothing
                     size_t model_index = this->filter_bank[j].second;
                     applyOnTupleElement(model_index, apply_smoothStep, this->model_bank, this->filter_bank[j].first, k, this->dynamic_noises[model_index], all_controls[k], X0, P0);
                 }
+
+
+                //Collect log probabilities
+                Eigen::MatrixXd log_probs{this->numFilters(),this->numFilters()};
+                 for (size_t j = 0; j < this->numFilters(); j++)
+                {
+                    log_gaussian_probability N{this->filter_bank[j].first.predicted_sigmas[k + 1]};
+                    auto predicted_mu = this->filter_bank[j].first.predicted_mus[k + 1];
+                    for (size_t i = 0; i < this->numFilters(); i++){
+                        log_probs(j,i)= N(this->filter_bank[i].first.smoothed_mus[k + 1], predicted_mu);
+                    }
+                }
+                //normalize for more numeric robustness. Maybe improve to also fit minCoeff into a suitable range
+                log_probs=log_probs.array()-log_probs.maxCoeff();
 
                 //Smoothed mode Probability mu j k|N
                 for (size_t j = 0; j < this->numFilters(); j++)
@@ -186,14 +202,14 @@ namespace adekf
                     //Lambda j k|N
                     double L = 0;
                     //likelihood
-                    log_gaussian_probability N{this->filter_bank[j].first.predicted_sigmas[k + 1]};
-                    auto predicted_mu = this->filter_bank[j].first.predicted_mus[k + 1];
                     for (size_t i = 0; i < this->numFilters(); i++)
                     {
-                        L += this->transition_probabilities(j, i) * exp(N(this->filter_bank[i].first.smoothed_mus[k + 1], predicted_mu));
+                        L += this->transition_probabilities(j, i) * exp(log_probs(j,i)); //N(this->filter_bank[i].first.smoothed_mus[k + 1], predicted_mu));
                     }
                     smoothed_model_probabilities[k](j) = L * old_model_probabilities[k](j);
                 }
+                //std::cout <<"old: "<< old_model_probabilities[k].transpose() << std::endl;
+                //std::cout <<"smo: "<< smoothed_model_probabilities[k].transpose() << std::endl;
                 //normalise
                 smoothed_model_probabilities[k] /= smoothed_model_probabilities[k].sum();
 
